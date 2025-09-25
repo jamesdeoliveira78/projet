@@ -1,0 +1,13 @@
+- hosts: dev
+  tasks:
+    - name: Installer les dépendances
+      apt:
+        name: [git, python3, nginx]
+        state: present
+        update_cache: yes
+    - name: Cloner le dépôt
+      git:
+        repo: "https://github.com/jamesdeoliveira78/projet.git"
+        dest: /opt/app
+    - name: Lancer l app
+      shell: python3 /opt/app/app.py > /var/log/app.log 2>&1 &

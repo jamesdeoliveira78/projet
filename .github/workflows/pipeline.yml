@@ -1,0 +1,25 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [dev, main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer Ansible et SSHpass
+        run: sudo apt-get update && sudo apt-get install -y ansible sshpass
+
+      - name: Déployer en dev
+        if: github.ref == 'refs/heads/dev'
+        run: ansible-playbook -i ansible/inventory/dev.ini ansible/playbooks/deploy-dev.yml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+
+      - name: Déployer en prod
+        if: github.ref == 'refs/heads/main'
+        run: ansible-playbook -i ansible/inventory/prod.ini ansible/playbooks/deploy-prod.yml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
