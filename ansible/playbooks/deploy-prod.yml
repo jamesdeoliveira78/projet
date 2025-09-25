@@ -1,4 +1,29 @@
-- hosts: prod
+---
+- name: Deploiement PROD
+  hosts: prod
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.10
+
+  pre_tasks:
+    - name: Installer Python 3.10 côté cible (si absent)
+      raw: |
+        set -e
+        if ! command -v python3.10 >/dev/null 2>&1; then
+          apt-get update -y
+          apt-get install -y software-properties-common
+          add-apt-repository -y ppa:deadsnakes/ppa
+          apt-get update -y
+          apt-get install -y python3.10 python3.10-distutils
+          ln -sf /usr/bin/python3.10 /usr/bin/python3
+        fi
+      changed_when: false
+
+    - name: Installer python3-apt pour le module apt (si absent)
+      raw: |
+        apt-get update -y
+        apt-get install -y python3-apt
+      changed_when: false
 
   tasks:
     - name: Mise à jour apt-get
@@ -7,20 +32,28 @@
 
     - name: Installer dépendances système
       apt:
-        name: [git, python3, nginx]
+        name:
+          - git
+          - python3-pip
+          - nginx
         state: present
+
+    - name: Créer /opt/app
+      file:
+        path: /opt/app
+        state: directory
 
     - name: Cloner le dépôt
       git:
         repo: "https://github.com/jamesdeoliveira78/projet.git"
         dest: /opt/app
+        version: main
 
     - name: Installer requirements si besoin
       pip:
         requirements: /opt/app/requirements.txt
-      when: 
-        - ansible_facts.packages['python3-pip'] is defined
-        # ou apt: name=pip en amont si besoin
+      register: pip_install
+      failed_when: pip_install is failed and "No such file or directory" not in (pip_install.msg | default(""))
 
     - name: Lancer l'app
-      shell: python3 /opt/app/app.py > /var/log/app.log 2>&1 &
+      shell: nohup python3 /opt/app/app.py > /var/log/app.log 2>&1 &
