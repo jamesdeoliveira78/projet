@@ -8,44 +8,60 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
-    services:
-      serveur-dev:
-        image: rastasheep/ubuntu-sshd:latest
-        ports:
-          - 2222:22
-        options: --name serveur-dev
-      serveur-prod:
-        image: rastasheep/ubuntu-sshd:latest
-        ports:
-          - 2200:22
-        options: --name serveur-prod
-
     steps:
-      - uses: actions/checkout@v4
+      # Étape 1 - Récupérer le code du dépôt
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Installer Ansible et SSHpass
+      # Étape 2 - Build l'image custom avec Python 3.10 et SSH déjà configurés
+      - name: Build Ansible host image (Ubuntu 22.04 + Python 3.10 + SSH)
+        run: docker build -t my-ansible-host:latest -f Dockerfile .
+
+      # Étape 3 - Lancer deux conteneurs simulant DEV et PROD
+      - name: Start DEV and PROD containers
+        run: |
+          docker run -d --name serveur-dev  -p 2222:22 my-ansible-host:latest
+          docker run -d --name serveur-prod -p 2200:22 my-ansible-host:latest
+
+      # Étape 4 - Attendre que sshd dans les conteneurs soit prêt
+      - name: Wait for sshd to be ready
+        run: |
+          echo "Waiting for DEV SSH..."
+          for i in {1..30}; do
+            (echo > /dev/tcp/127.0.0.1/2222) >/dev/null 2>&1 && break
+            sleep 1
+          done
+          echo "Waiting for PROD SSH..."
+          for i in {1..30}; do
+            (echo > /dev/tcp/127.0.0.1/2200) >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+      # Étape 5 - Installer Ansible et SSHpass sur le runner GitHub Actions
+      - name: Install Ansible and sshpass
         run: |
           sudo apt-get update
           sudo apt-get install -y ansible sshpass
 
-      # Préparer le container DEV (installer python)
-      - name: Installer Python dans serveur-dev
-        run: |
-          docker exec serveur-dev bash -lc "apt-get update && apt-get install -y python3 python3-distutils"
-
-      # Préparer le container PROD (installer python)
-      - name: Installer Python dans serveur-prod
-        run: |
-          docker exec serveur-prod bash -lc "apt-get update && apt-get install -y python3 python3-distutils"
-
-      - name: Déployer en dev
+      # Étape 6 - Déploiement DEV uniquement si on push sur la branche dev
+      - name: Deploy to DEV
         if: github.ref == 'refs/heads/dev'
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
         run: ansible-playbook -i ansible/inventory/dev.ini ansible/playbooks/deploy-dev.yml
-        env:
-          ANSIBLE_HOST_KEY_CHECKING: 'False'
 
-      - name: Déployer en prod
+      # Étape 7 - Déploiement PROD uniquement si on push sur la branche main
+      - name: Deploy to PROD
         if: github.ref == 'refs/heads/main'
-        run: ansible-playbook -i ansible/inventory/prod.ini ansible/playbooks/deploy-prod.yml
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
+        run: ansible-playbook -i ansible/inventory/prod.ini ansible/playbooks/deploy-prod.yml
+
+      # Étape 8 - Nettoyer les conteneurs (optionnel mais conseillé)
+      - name: Cleanup containers
+        if: always()
+        run: |
+          docker stop serveur-dev || true
+          docker rm serveur-dev || true
+          docker stop serveur-prod || true
+          docker rm serveur-prod || true

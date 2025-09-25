@@ -1,50 +1,31 @@
-# Utiliser l'image de base Ubuntu 22.04
+# Ubuntu 22.04 (Python 3.10 natif)
 FROM ubuntu:22.04
 
-# Éviter les questions interactives lors de l'installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Mettre à jour et installer les prérequis
+# Outils de base + Python + SSH + Git
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        gnupg \
-        lsb-release \
-        software-properties-common \
-        apt-transport-https \
-        build-essential && \
+      openssh-server \
+      python3 \
+      python3-distutils \
+      python3-apt \
+      python3-pip \
+      git \
+      ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Ajouter le dépôt pour Python 3.10+
-RUN add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get update
+# Config SSH (CI uniquement) : root/root + password auth
+RUN mkdir -p /var/run/sshd && \
+    echo 'root:root' | chpasswd && \
+    sed -ri 's/^#?PermitRootLogin .*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -ri 's/^#?PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -ri 's@^#?Port 22$@Port 22@' /etc/ssh/sshd_config
 
-# Installer Python 3.10, pip, git et OpenSSH
-RUN apt-get install -y --no-install-recommends \
-        python3.10 \
-        python3.10-distutils \
-        python3-pip \
-        git \
-        openssh-server && \
-    ln -sf /usr/bin/python3.10 /usr/bin/python3 && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Créer le répertoire SSH
-RUN mkdir -p /var/run/sshd
-
-# Exposer le port SSH
 EXPOSE 22
 
-# Définir le répertoire de travail
-WORKDIR /app
+# Dossier de travail (facultatif)
+WORKDIR /root
 
-# Copier les fichiers du projet dans l'image
-COPY . /app
-
-# Installer les dépendances Python si un requirements.txt existe
-RUN if [ -f "requirements.txt" ]; then pip install --no-cache-dir -r requirements.txt; fi
-
-# Commande par défaut : démarrer le service SSH
+# Lancer sshd au démarrage
 CMD ["/usr/sbin/sshd", "-D"]
