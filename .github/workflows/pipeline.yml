@@ -7,6 +7,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     services:
       serveur-dev:
         image: rastasheep/ubuntu-sshd:latest
@@ -18,15 +19,31 @@ jobs:
         ports:
           - 2200:22
         options: --name serveur-prod
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Installer Ansible et SSHpass
-        run: sudo apt-get update && sudo apt-get install -y ansible sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible sshpass
+
+      # Préparer le container DEV (installer python)
+      - name: Installer Python dans serveur-dev
+        run: |
+          docker exec serveur-dev bash -lc "apt-get update && apt-get install -y python3 python3-distutils"
+
+      # Préparer le container PROD (installer python)
+      - name: Installer Python dans serveur-prod
+        run: |
+          docker exec serveur-prod bash -lc "apt-get update && apt-get install -y python3 python3-distutils"
+
       - name: Déployer en dev
         if: github.ref == 'refs/heads/dev'
         run: ansible-playbook -i ansible/inventory/dev.ini ansible/playbooks/deploy-dev.yml
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
+
       - name: Déployer en prod
         if: github.ref == 'refs/heads/main'
         run: ansible-playbook -i ansible/inventory/prod.ini ansible/playbooks/deploy-prod.yml
