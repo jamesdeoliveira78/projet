@@ -1,28 +1,25 @@
 - hosts: dev
+
   tasks:
-    - name: Met à jour apt-get avant tout
+    - name: Mise à jour apt-get
       apt:
         update_cache: yes
 
-    - name: Installe python3.8 (version moderne)
-      apt:
-        name: python3.8
-        state: present
-
-    - name: Force le lien symbolique python3 vers python3.8
-      ansible.builtin.command:
-        cmd: update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
-      become: yes
-      ignore_errors: yes
-      
-    - name: Installer les dépendances
+    - name: Installer dépendances système
       apt:
         name: [git, python3, nginx]
         state: present
-        update_cache: yes
+
     - name: Cloner le dépôt
       git:
         repo: "https://github.com/jamesdeoliveira78/projet.git"
         dest: /opt/app
-    - name: Lancer l app
+
+    - name: Installer requirements si besoin
+      pip:
+        requirements: /opt/app/requirements.txt
+      when: 
+        - ansible_facts.packages['python3-pip'] is defined
+
+    - name: Lancer l'app
       shell: python3 /opt/app/app.py > /var/log/app.log 2>&1 &
